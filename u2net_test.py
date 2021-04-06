@@ -114,7 +114,7 @@ def main():
 
     if torch.cuda.is_available():
         net.cuda()
-        net = nn.DataParallel(net)
+        # net = nn.DataParallel(net)
         net.load_state_dict(torch.load(model_dir))
 
     else:
