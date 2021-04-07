@@ -1,4 +1,3 @@
-import argparse
 import os
 import torch
 import torchvision
@@ -10,12 +9,14 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms, utils
 import torch.optim as optim
+from torch.optim.lr_scheduler import MultiStepLR
 import torchvision.transforms as standard_transforms
 import torch.distributed as dist
 
 import numpy as np
 import glob
-import os
+import pandas as pd
+import argparse
 
 from data_loader import Rescale
 from data_loader import RescaleT
@@ -24,30 +25,43 @@ from data_loader import ToTensor
 from data_loader import ToTensorLab
 from data_loader import SalObjDataset
 
+import pytorch_ssim
+import pytorch_iou
+
 from model import U2NET
 from model import U2NETP
 
-
-
-
 # ------- 1. define loss function --------
-
 bce_loss = nn.BCELoss(size_average=True)
+ssim_loss = pytorch_ssim.SSIM(window_size=11,size_average=True)
+iou_loss = pytorch_iou.IOU(size_average=True)
+
+def bce_ssim_loss(pred,target):
+
+	bce_out = bce_loss(pred,target)
+	ssim_out = 1 - ssim_loss(pred,target)
+	iou_out = iou_loss(pred,target)
+
+	loss = bce_out + ssim_out + iou_out
+
+	return loss
 
 def muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v):
 
-	loss0 = bce_loss(d0,labels_v)
-	loss1 = bce_loss(d1,labels_v)
-	loss2 = bce_loss(d2,labels_v)
-	loss3 = bce_loss(d3,labels_v)
-	loss4 = bce_loss(d4,labels_v)
-	loss5 = bce_loss(d5,labels_v)
-	loss6 = bce_loss(d6,labels_v)
+    loss0 = bce_ssim_loss(d0,labels_v)
+    loss1 = bce_ssim_loss(d1,labels_v)
+    loss2 = bce_ssim_loss(d2,labels_v)
+    loss3 = bce_ssim_loss(d3,labels_v)
+    loss4 = bce_ssim_loss(d4,labels_v)
+    loss5 = bce_ssim_loss(d5,labels_v)
+    loss6 = bce_ssim_loss(d6,labels_v)
 
-	loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6
-	print("l0: %3f, l1: %3f, l2: %3f, l3: %3f, l4: %3f, l5: %3f, l6: %3f\n"%(loss0.data.item(),loss1.data.item(),loss2.data.item(),loss3.data.item(),loss4.data.item(),loss5.data.item(),loss6.data.item()))
+    loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6
 
-	return loss0, loss
+    loss_log = np.asarray([loss.data.item(), loss0.data.item(), loss1.data.item(), loss2.data.item(), loss3.data.item(), loss4.data.item(), loss5.data.item(), loss6.data.item()])
+    # print("l0: %3f, l1: %3f, l2: %3f, l3: %3f, l4: %3f, l5: %3f, l6: %3f\n"%(loss0.data.item(),loss1.data.item(),loss2.data.item(),loss3.data.item(),loss4.data.item(),loss5.data.item(),loss6.data.item()))
+
+    return loss_log, loss0, loss
 
 # ------- 2. set the directory of training dataset --------
 
@@ -64,14 +78,15 @@ model_dir = os.path.join(os.getcwd(), 'saved_models', model_name + os.sep)
 
 # PARAMETER
 epoch_num = 100000
-batch_size_train = 12
+batch_size_train = 24
 batch_size_val = 1
 train_num = 0
 val_num = 0
 # init
 # run on multiple gpus
 parser = argparse.ArgumentParser()
-parser.add_argument('--local_rank', type=int, help="local gpu id")
+parser.add_argument('--local_rank', type=int, default=0, help="local gpu id")
+parser.add_argument('--ngpu', type=int, default=2)
 args = parser.parse_args()
 
 dist.init_process_group(backend='nccl',init_method='env://')
@@ -107,7 +122,8 @@ salobj_dataset = SalObjDataset(
         RescaleT(320),
         RandomCrop(288),
         ToTensorLab(flag=0)]))
-salobj_dataset_sampler = DistributedSampler(salobj_dataset)
+
+salobj_dataset_sampler = DistributedSampler(salobj_dataset, num_replicas=args.ngpu)
 salobj_dataloader = DataLoader(salobj_dataset, batch_size=batch_size_train, sampler=salobj_dataset_sampler,num_workers=2)
 
 # ------- 3. define model --------
@@ -122,16 +138,28 @@ net = net.cuda()
 net = torch.nn.parallel.DistributedDataParallel(net,device_ids=[args.local_rank], output_device=args.local_rank)
 # ------- 4. define optimizer --------
 print("---define optimizer...")
-optimizer = optim.Adam(net.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
+optimizer = optim.Adam(net.parameters(), lr=0.02, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
+scheduler = MultiStepLR(optimizer, milestones = [20, 40, 60], gamma = 0.2 )
 
 # ------- 5. training process --------
+# load pre-trained net parameter
+try:
+    net.load_state_dict(torch.load(model_dir+model_name+"latest.pth"))
+except:
+    pass
+
+with open("log.csv", "w") as my_empty_csv:
+  pass
+df = pd.DataFrame(list(), columns = ['loss','loss0','loss1','loss2','loss3','loss4','loss5','loss6'])
+df.to_csv('log.csv', index = False)
 
 print("---start training...")
 ite_num = 0
 running_loss = 0.0
 running_tar_loss = 0.0
 ite_num4val = 0
-save_frq = 5000 # save the model every 2000 iterations
+save_frq = 4000 # save the model every 2000 iterations
+loss_logs = np.empty([1, 8])
 
 for epoch in range(0, epoch_num):
     net.train()
@@ -141,8 +169,7 @@ for epoch in range(0, epoch_num):
         ite_num4val = ite_num4val + 1
 
         inputs, labels = data['image'], data['label']
-        #inputs = inputs.to(device, dtype=torch.float32)
-        #labels = labels.to(device, dtype=torch.float32)
+
         inputs = inputs.type(torch.FloatTensor)
         labels = labels.type(torch.FloatTensor)
 
@@ -157,7 +184,8 @@ for epoch in range(0, epoch_num):
 
         # forward + backward + optimize
         d0, d1, d2, d3, d4, d5, d6 = net(inputs_v)
-        loss2, loss = muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v)
+        loss_log, loss2, loss = muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v)
+        loss_logs += loss_log
 
         loss.backward()
         optimizer.step()
@@ -174,10 +202,15 @@ for epoch in range(0, epoch_num):
 
         if ite_num % save_frq == 0:
 
-            torch.save(net.state_dict(), model_dir + model_name+"_bce_itr_%d_train_%3f_tar_%3f.pth" % (ite_num, running_loss / ite_num4val, running_tar_loss / ite_num4val))
-            torch.save(net.state_dict(), model_dir + model_name+"latest.pth")
+            torch.save(net.module.state_dict(), model_dir + model_name+"_bce_itr_%d_train_%3f_tar_%3f.pth" % (ite_num, running_loss / ite_num4val, running_tar_loss / ite_num4val))
+            torch.save(net.module.state_dict(), model_dir + model_name+"latest.pth")
             running_loss = 0.0
             running_tar_loss = 0.0
             net.train()  # resume train
             ite_num4val = 0
+    
+    scheduler.step()
+    # save loss to log.csv
+    loss_logs = pd.DataFrame(loss_logs/(i+1),columns=['loss','loss0','loss1','loss2','loss3','loss4','loss5','loss6'])
+    loss_logs.to_csv('log.csv', mode = 'a', header = False, index = False)
 
