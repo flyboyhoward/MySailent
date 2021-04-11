@@ -57,7 +57,7 @@ def muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v):
     loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6
 
     loss_log = np.asarray([loss.data.item(), loss0.data.item(), loss1.data.item(), loss2.data.item(), loss3.data.item(), loss4.data.item(), loss5.data.item(), loss6.data.item()])
-    # print("l0: %3f, l1: %3f, l2: %3f, l3: %3f, l4: %3f, l5: %3f, l6: %3f\n"%(loss0.data.item(),loss1.data.item(),loss2.data.item(),loss3.data.item(),loss4.data.item(),loss5.data.item(),loss6.data.item()))
+    print("l0: %3f, l1: %3f, l2: %3f, l3: %3f, l4: %3f, l5: %3f, l6: %3f\n"%(loss0.data.item(),loss1.data.item(),loss2.data.item(),loss3.data.item(),loss4.data.item(),loss5.data.item(),loss6.data.item()))
 
     return loss_log, loss0, loss
 
@@ -110,7 +110,7 @@ salobj_dataset = SalObjDataset(
         RescaleT(320),
         RandomCrop(288),
         ToTensorLab(flag=0)]))
-salobj_dataloader = DataLoader(salobj_dataset, batch_size=batch_size_train, shuffle=True, num_workers=1)
+salobj_dataloader = DataLoader(salobj_dataset, batch_size=batch_size_train, shuffle=True, num_workers=4)
 
 # ------- 3. define model --------
 # define the net
@@ -127,7 +127,7 @@ if torch.cuda.is_available():
 # ------- 4. define optimizer --------
 print("---define optimizer...")
 optimizer = optim.Adam(net.parameters(), lr=0.02, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
-scheduler = MultiStepLR(optimizer, milestones = [20, 40, 60], gamma = 0.2 )
+scheduler = MultiStepLR(optimizer, milestones = [30, 80], gamma = 0.2 )
 # ------- 5. training process --------
 # load pre-trained net parameter
 try:
@@ -146,10 +146,10 @@ running_loss = 0.0
 running_tar_loss = 0.0
 ite_num4val = 0
 save_frq = 4000 # save the model every 2000 iterations
-loss_logs = np.empty([1, 8])
 
 for epoch in range(0, epoch_num):
     net.train()
+    loss_logs = np.empty([1, 8])
 
     for i, data in enumerate(salobj_dataloader):
         ite_num = ite_num + 1
