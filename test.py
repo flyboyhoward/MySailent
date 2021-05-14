@@ -15,7 +15,7 @@ def composite_foreground2background(foreground, background, foreground_scale=0.7
     Param: 
         foreground: foreground 4 channel image (RGBA) 
         background: background 3 channel image
-        foreground_scale: threshold for making foreground image smaller than the shorter side of background image
+        foreground_scale: scale of the shorter side of background image, which foreground size should smaller than it
     Return: 
         composite_image: 3 channel image with foreground, dtype = np.uint8
         composite_mask: 1 channel mask, dtype = np.uint8
@@ -88,11 +88,14 @@ def refresh_folder(folder_path):
 def load_foreground(file_path):
     '''
     Load and pre-process image from given file path
-    Foreground should be 4 channel image (RGBA)
+    Foreground file should be 4 channel image (RGBA)
+    Return:
+        foreground: 4 channel (RGBA) pruned foreground, dtype = uint8
+        flag: flag for whether this foreground will be use in later process
     '''
     foreground = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
     if foreground.shape[2] == 4:
-        foreground = prune_foreground(foreground)
+        foreground = prune_foreground(foreground)   # prune foreground
         flag = True
     else:
         print(file_path.split(os.sep)[-1], ' Invalid foreground. Will skip the composition of this foreground.')
@@ -105,6 +108,9 @@ def load_background(file_path):
     '''
     Load background image
     Background should be 3 channel image
+    Return:
+        background: 3 channel background, dtype = uint8
+        flag: flag for whether this background will be use in later process
     '''
     background = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
     if background.shape[2] == 3:
@@ -120,12 +126,45 @@ def load_background(file_path):
 def generate_random_background(foreground):
     '''
     Generate random background
-    Hopefully, will improve training by adding noise input
+    Hopefully, will improve training by adding noise
+    Return:
+        random_backgorund:
     '''
     height, width = foreground.shape[:2]
     random_background = np.random.randint(255,size = [int(height*1.3), int(width*1.3),3])
 
     return random_background
+
+def main():
+
+    foreground_dir = os.path.join(os.getcwd(), 'train_imagev2_foreground' + os.sep)
+    background_dir = os.path.join(os.getcwd(), 'train_imagev2_background' + os.sep)
+    save_image_dir = os.path.join(os.getcwd(), 'train_data', 'train_image' + os.sep)
+    save_mask_dir = os.path.join(os.getcwd(), 'train_data', 'train_mask' + os.sep)
+    
+    refresh_folder(save_image_dir); refresh_folder(save_mask_dir)
+
+    foreground_list = glob.glob(foreground_dir + '*')
+    background_list = glob.glob(background_dir + '*')
+    
+    for i_image in tqdm(range(len(foreground_list)), desc = 'Processing:', unit = 'img'):
+        i_path = foreground_list[i_image]
+        foreground, flag = load_foreground(i_path)
+        if flag == False:
+            continue
+        foreground_name = foreground_list[i_image].split(os.sep)[-1].split('.')[0]
+        
+        for i in range(3):
+            background, flag = load_background(background_list[random.randint(0,len(background_list)-1)])
+            if flag == False:
+                continue
+            composite_image, composite_mask = composite_foreground2background(foreground, background,size_thresh=0.8)
+            
+            cv2.imwrite(os.path.join(save_image_dir, foreground_name + str(i) + '.jpg'), composite_image)
+            cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
+            # print('save ', foreground_name+str(i), ' to folder' ' %d th foreground'%(i_image+1))
+    
+    print('Complete Generating Dateset \n','!!!Enjoy Coding!!!')
 
 if __name__ == '__main__':
 
