@@ -6,7 +6,7 @@ import glob
 import shutil
 from tqdm import tqdm
 
-def composite_foreground2background(foreground, background, size_thresh=0.7):
+def composite_foreground2background(foreground, background, foreground_scale=0.7):
     '''
     Composite foreground to background follow the equation below:
         I = alpha*Foreground + (1-alpha)*background
@@ -15,7 +15,7 @@ def composite_foreground2background(foreground, background, size_thresh=0.7):
     Param: 
         foreground: foreground 4 channel image (RGBA) 
         background: background 3 channel image
-        size_thresh: threshold for making foreground image smaller than the shorter side of background image
+        foreground_scale: threshold for making foreground image smaller than the shorter side of background image
     Return: 
         composite_image: 3 channel image with foreground, dtype = np.uint8
         composite_mask: 1 channel mask, dtype = np.uint8
@@ -26,12 +26,12 @@ def composite_foreground2background(foreground, background, size_thresh=0.7):
     edge_thresh = 0.1   # threshold for placing foreground in the central area of background image
 
     # resize foreground to proper size which foreground size should smaller than background size
-    if foreground_width >= size_thresh*background_width and foreground_height < size_thresh*background_height:
-        resize_scale = (size_thresh*background_width)/foreground_width
-    elif foreground_width < size_thresh*background_width and foreground_height >= size_thresh*background_height:
-        resize_scale = (size_thresh*background_height)/foreground_height
-    elif foreground_width >= size_thresh*background_width and foreground_height >= size_thresh*background_height:
-        resize_scale = min((size_thresh*background_width)/foreground_width,(size_thresh*background_height)/foreground_height)
+    if foreground_width >= foreground_scale*background_width and foreground_height < foreground_scale*background_height:
+        resize_scale = (foreground_scale*background_width)/foreground_width
+    elif foreground_width < foreground_scale*background_width and foreground_height >= foreground_scale*background_height:
+        resize_scale = (foreground_scale*background_height)/foreground_height
+    elif foreground_width >= foreground_scale*background_width and foreground_height >= foreground_scale*background_height:
+        resize_scale = min((foreground_scale*background_width)/foreground_width,(foreground_scale*background_height)/foreground_height)
     else: 
         resize_scale = 1
     if resize_scale != 1:
@@ -118,8 +118,12 @@ def load_background(file_path):
     return background, flag
 
 def generate_random_background(foreground):
-    random_background_size = int(foreground.shape[:2]*1.4)
-    random_background = np.random.randint(255,[random_background_size,3])
+    '''
+    Generate random background
+    Hopefully, will improve training by adding noise input
+    '''
+    height, width = foreground.shape[:2]
+    random_background = np.random.randint(255,size = [int(height*1.3), int(width*1.3),3])
 
     return random_background
 
@@ -128,7 +132,7 @@ if __name__ == '__main__':
     foreground, flag = load_foreground('1.png')
     background, flag = load_background('train_data/DUTS/DUTS-TR/HRSOD_train/00000.jpg')
     background = generate_random_background(foreground)
-    composite_image, composite_mask = composite_foreground2background(foreground, background,size_thresh=0.8)
+    composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
     cv2.imwrite(os.path.join('matte.jpg'), composite_image)
     # cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
     print('Complete Generating Dateset \n','!!Enjoy Coding!!')
