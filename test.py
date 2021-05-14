@@ -117,15 +117,17 @@ def load_background(file_path):
 
     return background, flag
 
+def generate_random_background(foreground):
+    random_background_size = int(foreground.shape[:2]*1.4)
+    random_background = np.random.randint(255,[random_background_size,3])
 
-def generate_random_background():
-
+    return random_background
 
 if __name__ == '__main__':
 
     foreground, flag = load_foreground('1.png')
     background, flag = load_background('train_data/DUTS/DUTS-TR/HRSOD_train/00000.jpg')
-
+    background = generate_random_background(foreground)
     composite_image, composite_mask = composite_foreground2background(foreground, background,size_thresh=0.8)
     cv2.imwrite(os.path.join('matte.jpg'), composite_image)
     # cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
