@@ -45,9 +45,9 @@ def composite_foreground2background(foreground, background, foreground_scale=0.7
     
     foreground_mask = foreground[:,:,3]/255.    # Normalize
     foreground_mask4compsite = np.array([foreground[:,:,0]*foreground_mask, 
-                                            foreground[:,:,1]*foreground_mask,
-                                            foreground[:,:,2]*foreground_mask,
-                                            foreground[:,:,3]]).transpose((1,2,0))
+                                        foreground[:,:,1]*foreground_mask,
+                                        foreground[:,:,2]*foreground_mask,
+                                        foreground[:,:,3]]).transpose((1,2,0))
     foreground_new[position[0]:position[0] + foreground_height, position[1]:position[1] + foreground_width] = foreground_mask4compsite
     
     background_mask = foreground_new[:,:,3].astype(np.uint8)
@@ -126,14 +126,23 @@ def load_background(file_path):
 def generate_random_background(foreground):
     '''
     Generate random background
-    Hopefully, will improve training by adding noise
+    Hopefully, will improve training by adding random generated background
     Return:
-        random_backgorund:
+        random_background: 3 channel background, dtype = uint8
     '''
     height, width = foreground.shape[:2]
-    random_background = np.random.randint(255,size = [int(height*1.3), int(width*1.3),3])
+    random_background = np.random.randint(255, size = [int(height*1.3), int(width*1.3),3], dtype = np.uint8)
 
     return random_background
+
+def random_flip(image):
+    '''
+    Flip image horizonally with probability of 0.5
+    '''
+    if random.random() < 0.5:
+        image = cv2.flip(image, 1)
+    
+    return image
 
 def main():
 
@@ -170,7 +179,9 @@ if __name__ == '__main__':
 
     foreground, flag = load_foreground('1.png')
     background, flag = load_background('train_data/DUTS/DUTS-TR/HRSOD_train/00000.jpg')
-    background = generate_random_background(foreground)
+    # background = generate_random_background(foreground)
+    foreground = random_flip(foreground)
+    background = random_flip(background)
     composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
     cv2.imwrite(os.path.join('matte.jpg'), composite_image)
     # cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
@@ -182,7 +193,7 @@ flip whole dataset
 # image_dir = os.path.join(data_dir, 'DUTS', 'DUTS-TR', 'HRSOD_train' + os.sep)
 # tra_label_dir = os.path.join(data_dir, 'DUTS', 'DUTS-TR', 'HRSOD_train_mask' + os.sep)
 
-# img_name_list = glob.glob(image_dir + '*')
+# img_name_list = glob.glob(image_dir + '*') 
 # mask_name_list = glob.glob(tra_label_dir + '*')
 
 # print("---")
