@@ -78,6 +78,8 @@ def refresh_folder(folder_path):
     '''
     Create folder if not exist 
     Clean all files in folder if exist
+    Param:
+        folder_path: path to folder
     '''
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
@@ -89,6 +91,8 @@ def load_foreground(file_path):
     '''
     Load and pre-process image from given file path
     Foreground file should be 4 channel image (RGBA)
+    Param: 
+        file_path: path to the image file
     Return:
         foreground: 4 channel (RGBA) pruned foreground, dtype = uint8
         flag: flag for whether this foreground will be use in later process
@@ -108,6 +112,8 @@ def load_background(file_path):
     '''
     Load background image
     Background should be 3 channel image
+    Param: 
+        file_path: path to the image file
     Return:
         background: 3 channel background, dtype = uint8
         flag: flag for whether this background will be use in later process
@@ -138,11 +144,28 @@ def generate_random_background(foreground):
 def random_flip(image):
     '''
     Flip image horizonally with probability of 0.5
+    Return:
+        image: horizonal flip
     '''
     if random.random() < 0.5:
         image = cv2.flip(image, 1)
     
     return image
+
+def generate_img_name_list(folder_path):
+    '''
+    generate .txt with training image ids
+    Param:
+        folder_path: path to folder
+    '''
+    img_list = glob.glob(folder_path + '*')
+    print(img_list)
+    with open('train.txt','w') as f:
+        for img_path in img_list:
+            img_name = img_path.split(os.sep)[-1]
+            print(img_name)
+            f.write(img_name + '\n')
+        f.close()
 
 def main():
 
@@ -177,15 +200,17 @@ def main():
 
 if __name__ == '__main__':
 
-    foreground, flag = load_foreground('1.png')
-    background, flag = load_background('train_data/DUTS/DUTS-TR/HRSOD_train/00000.jpg')
-    # background = generate_random_background(foreground)
-    foreground = random_flip(foreground)
-    background = random_flip(background)
-    composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
-    cv2.imwrite(os.path.join('matte.jpg'), composite_image)
-    # cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
-    print('Complete Generating Dateset \n','!!Enjoy Coding!!')
+    # foreground, flag = load_foreground('1.png')
+    # background, flag = load_background('train_data/DUTS/DUTS-TR/HRSOD_train/00000.jpg')
+    # # background = generate_random_background(foreground)
+    # foreground = random_flip(foreground)
+    # background = random_flip(background)
+    # composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
+    # cv2.imwrite(os.path.join('matte.jpg'), composite_image)
+    # # cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
+    # print('Complete Generating Dateset \n','!!Enjoy Coding!!')
+    foreground_dir = os.path.join(os.getcwd(), 'test_data', 'test_images' + os.sep)
+    generate_img_name_list(foreground_dir)
 '''
 flip whole dataset
 '''
