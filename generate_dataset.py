@@ -159,11 +159,10 @@ def generate_img_name_list(folder_path):
         folder_path: path to folder
     '''
     img_list = glob.glob(folder_path + '*')
-    print(img_list)
+
     with open('train.txt','w') as f:
         for img_path in img_list:
             img_name = img_path.split(os.sep)[-1]
-            print(img_name)
             f.write(img_name + '\n')
         f.close()
 
