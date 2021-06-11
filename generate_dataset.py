@@ -4,6 +4,7 @@ import random
 import cv2
 import glob
 import shutil
+import imutils
 from tqdm import tqdm
 
 def composite_foreground2background(foreground, background, foreground_scale=0.7):
@@ -131,7 +132,7 @@ def load_background(file_path):
 
 def generate_random_background(foreground):
     '''
-    Generate random background
+    Generate random background directly from input foreground
     Hopefully, will improve training by adding random generated background
     Return:
         random_background: 3 channel background, dtype = uint8
@@ -141,15 +142,51 @@ def generate_random_background(foreground):
 
     return random_background
 
-def random_flip(image):
+def generate_white_background(foreground):
     '''
-    Flip image horizonally with probability of 0.5
+    Generate white background directly from input foreground
+    "Brilliant" idea proposed by David Zhang
+    Return:
+        white_background: 3 channel background, dtype = uint8
+    '''
+    height, width = foreground.shape[:2]
+    white_background = np.ones((int(height*1.3), int(width*1.3), 3), dtype = int)*255
+
+    return white_background
+
+def rotate_bound(image, angle):
+    # grab the dimensions of the image and then determine the
+    # center
+    (h, w) = image.shape[:2]
+    (cX, cY) = (w // 2, h // 2)
+    # grab the rotation matrix (applying the negative of the
+    # angle to rotate clockwise), then grab the sine and cosine
+    # (i.e., the rotation components of the matrix)
+    M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0)
+    cos = np.abs(M[0, 0])
+    sin = np.abs(M[0, 1])
+    # compute the new bounding dimensions of the image
+    nW = int((h * sin) + (w * cos))
+    nH = int((h * cos) + (w * sin))
+    # adjust the rotation matrix to take into account translation
+    M[0, 2] += (nW / 2) - cX
+    M[1, 2] += (nH / 2) - cY
+    # perform the actual rotation and return the image
+    return cv2.warpAffine(image, M, (nW, nH))
+
+def random_flip_rotate(image):
+    '''
+    Flip image horizonally with probability of 0.5 & rotate image randomly
     Return:
         image: horizonal flip
     '''
     if random.random() < 0.5:
         image = cv2.flip(image, 1)
     
+    if random.random() < 0.5:
+        angle = random.randrange(0,360,15)
+        image = rotate_bound(image, angle)
+
     return image
 
 def generate_img_name_list(folder_path):
@@ -199,17 +236,17 @@ def main():
 
 if __name__ == '__main__':
 
-    # foreground, flag = load_foreground('1.png')
+    foreground, flag = load_foreground('1.png')
     # background, flag = load_background('train_data/DUTS/DUTS-TR/HRSOD_train/00000.jpg')
-    # # background = generate_random_background(foreground)
-    # foreground = random_flip(foreground)
+    foreground = random_flip_rotate(foreground)
+    background = generate_white_background(foreground)
     # background = random_flip(background)
-    # composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
-    # cv2.imwrite(os.path.join('matte.jpg'), composite_image)
-    # # cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
+    composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
+    cv2.imwrite(os.path.join('matte.jpg'), composite_image)
+    # cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
     # print('Complete Generating Dateset \n','!!Enjoy Coding!!')
-    foreground_dir = os.path.join(os.getcwd(), 'test_data', 'test_images' + os.sep)
-    generate_img_name_list(foreground_dir)
+    # foreground_dir = os.path.join(os.getcwd(), 'test_data', 'test_images' + os.sep)
+    # generate_img_name_list(foreground_dir)
 '''
 flip whole dataset
 '''
