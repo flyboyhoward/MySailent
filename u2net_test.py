@@ -22,12 +22,31 @@ from data_loader import SalObjDataset
 from model import U2NET # full size version 173.6 MB
 from model import U2NETP # small version u2net 4.7 MB
 
+def matting_error_visualize(model_name):
+    matting_dir = os.path.join(os.getcwd(), 'test_data', 'matting' + os.sep)
+    mask_dir =os.path.join(os.getcwd(), 'test_data', 'mask' + os.sep)
+    error_dir = os.path.join(os.getcwd(), 'test_data', 'error' + os.sep)
+
+    img_name_list = glob.glob(mask_dir + os.sep + '*')
+    
+    for i_img, img_path in enumerate(img_name_list):
+        maskImage = cv2.imread(img_path)
+        maskImage = cv2.cvtColor(maskImage, cv2.COLOR_RGB2GRAY)
+        img_name = img_name_list[i_img].split(os.sep)[-1].split('.')[0]
+        mattingImage = cv2.imread(os.path.join(matting_dir + img_name + '.png'), cv2.IMREAD_UNCHANGED)#
+        error = abs(maskImage - mattingImage[:,:,3])      
+        mattingImage[:,:,3] += error
+        mattingImage[:,:,2] += error 
+        print('visualizing: ', img_name, '.png')
+        cv2.imwrite(os.path.join(error_dir, img_name + '.png'), mattingImage)
+
+
 def matting(model_name):
 
     image_dir = os.path.join(os.getcwd(), 'test_data', 'test_images')
     prediction_dir = os.path.join(os.getcwd(), 'test_data', model_name + '_results' + os.sep)
     save_dir = os.path.join(os.getcwd(), 'test_data', 'matting' + os.sep)
-
+    # save_dir_crop =os.path.join(os.getcwd(), 'test_data', 'crop' + os.sep)
     img_name_list = glob.glob(image_dir + os.sep + '*')
     # print(img_name_list)
 
@@ -36,18 +55,23 @@ def matting(model_name):
         img_name = img_name_list[i_img].split(os.sep)[-1].split('.')[0]
         salientImage = cv2.imread(os.path.join(prediction_dir + img_name + '.png'))#
         salientImageGray = cv2.cvtColor(salientImage, cv2.COLOR_RGB2GRAY)
-        _, threshImage = cv2.threshold(salientImageGray, 100, 255, cv2.THRESH_BINARY)
+        _, threshImage = cv2.threshold(salientImageGray, 180, 255, cv2.THRESH_BINARY)
+        # pos_list = np.where(threshImage>0)
+        # cropImage = objectImage[min(pos_list[0]):max(pos_list[0]) + 1, min(pos_list[1]):max(pos_list[1]) + 1]
+        # threshImage = cv2.GaussianBlur(salientImageGray, (11,11), 0) 
 
         # cv2.drawContours(objectImage, contours, -1, (0,255,0), 3)
-        binarythreshImage = threshImage//255
+        binarythreshImage = threshImage/255.
         objectImage = objectImage*np.transpose(np.squeeze([[binarythreshImage],[binarythreshImage],[binarythreshImage]]),(1,2,0))
-
+        # objectImage = objectImage[min(pos_list[0]):max(pos_list[0]) + 1, min(pos_list[1]):max(pos_list[1]) + 1]
+        # threshImage = threshImage[min(pos_list[0]):max(pos_list[0]) + 1, min(pos_list[1]):max(pos_list[1]) + 1]
         # rgb to rgba for transparent background in image. NOTE: the image must in .png form
         threshImage = threshImage[:,:,np.newaxis]
         objectImage = np.append(objectImage, threshImage, axis = 2)
-
-        cv2.imwrite(os.path.join(save_dir, img_name + '.png'),objectImage)
-
+        print('matting: ',img_name_list[i_img].split(os.sep)[-1])
+        cv2.imwrite(os.path.join(save_dir, img_name + '.png'),objectImage.astype(int))
+        # cv2.imwrite(os.path.join(save_dir_crop, img_name + '.jpg'), cropImage)
+        
 # normalize the predicted SOD probability map
 def normPRED(d):
     ma = torch.max(d)
@@ -87,10 +111,10 @@ def main():
 
     image_dir = os.path.join(os.getcwd(), 'test_data', 'test_images')
     prediction_dir = os.path.join(os.getcwd(), 'test_data', model_name + '_results' + os.sep)
-    model_dir = os.path.join(os.getcwd(), 'saved_models', model_name, model_name + 'latest.pth')
+    model_dir = os.path.join(os.getcwd(), 'saved_models', model_name, model_name + 'latestv2.pth')
 
     img_name_list = glob.glob(image_dir + os.sep + '*')
-    print(img_name_list)
+    # print(img_name_list)
 
     # --------- 2. dataloader ---------
     #1. dataloader
@@ -102,7 +126,7 @@ def main():
     test_salobj_dataloader = DataLoader(test_salobj_dataset,
                                         batch_size=1,
                                         shuffle=False,
-                                        num_workers=1)
+                                        num_workers=0)
 
     # --------- 3. model define ---------
     if(model_name=='u2net'):
@@ -114,8 +138,9 @@ def main():
 
     if torch.cuda.is_available():
         net.cuda()
-        # net = nn.DataParallel(net)
+
         net.load_state_dict(torch.load(model_dir))
+        #net = nn.DataParallel(net)
 
     else:
         net.load_state_dict(torch.load(model_dir, map_location='cpu'))
@@ -148,6 +173,9 @@ def main():
         del d1,d2,d3,d4,d5,d6,d7
 
 if __name__ == "__main__":
-    main()
-    matting('u2net')
-    print('matting complete')
+    # main()
+    # print('inference complete start matting')
+    # matting('u2net')
+    # print('matting complete starting error visualize')
+    matting_error_visualize('u2net')
+    print('error visualize complete')
