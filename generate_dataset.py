@@ -39,7 +39,16 @@ def composite_foreground2background(foreground, background, foreground_scale=0.7
         foreground = cv2.resize(foreground, (int(resize_scale*foreground_width), int(resize_scale*foreground_height)), interpolation = cv2.INTER_AREA)
     
     foreground_height, foreground_width, _ = foreground.shape
+    
+    # resize foreground to proper size in case foreground to small
+    if (foreground_height*foreground_width)/(background_height*background_width) <= 10:
+        background = cv2.resize(background, (max(foreground_width, foreground_height)*2, max(foreground_width, foreground_height)*2), interpolation = cv2.INTER_AREA)
+    else:
+        pass
+    
+    background_height, background_width, _ = background.shape
     foreground_new = np.zeros((background_height, background_width,4))
+    
     # generate random composite position
     position = [random.randint(int(edge_thresh*background_height), background_height - foreground_height - int(edge_thresh*background_height)), 
                 random.randint(int(edge_thresh*background_width), background_width - foreground_width - int(edge_thresh*background_width))] 
@@ -99,10 +108,15 @@ def load_foreground(file_path):
         flag: flag for whether this foreground will be use in later process
     '''
     foreground = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
-    if foreground.shape[2] == 4:
-        foreground = prune_foreground(foreground)   # prune foreground
-        flag = True
-    else:
+    try:
+        if foreground.shape[2] == 4:
+            foreground = prune_foreground(foreground)   # prune foreground
+            flag = True
+        else:
+            print(file_path.split(os.sep)[-1], ' Invalid foreground. Will skip the composition of this foreground.')
+            foreground = None
+            flag = False
+    except:
         print(file_path.split(os.sep)[-1], ' Invalid foreground. Will skip the composition of this foreground.')
         foreground = None
         flag = False
@@ -120,11 +134,16 @@ def load_background(file_path):
         flag: flag for whether this background will be use in later process
     '''
     background = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
-    if background.shape[2] == 3:
-        background = background
-        flag = True
-    else:
-        print(file_path.split(os.sep)[-1], ' Invalid background. Will skip this background.')
+    try:
+        if background.shape[2] == 3:
+            background = background
+            flag = True
+        else:
+            print(file_path.split(os.sep)[-1], ' Invalid background. Will skip the composition of this background.')
+            background = None
+            flag = False
+    except:
+        print(file_path.split(os.sep)[-1], ' Invalid foreground. Will skip the composition of this background.')
         background = None
         flag = False
 
@@ -133,7 +152,7 @@ def load_background(file_path):
 def generate_random_background(foreground):
     '''
     Generate random background directly from input foreground
-    Hopefully, will improve training by adding random generated background
+    Hopefully, this method would improve training by adding random generated background
     Return:
         random_background: 3 channel background, dtype = uint8
     '''
@@ -142,7 +161,7 @@ def generate_random_background(foreground):
 
     return random_background
 
-def generate_white_background(foreground):
+def generate_onecolor_background(foreground):
     '''
     Generate white background directly from input foreground
     "Brilliant" idea proposed by David Zhang
@@ -150,7 +169,7 @@ def generate_white_background(foreground):
         white_background: 3 channel background, dtype = uint8
     '''
     height, width = foreground.shape[:2]
-    white_background = np.ones((int(height*1.3), int(width*1.3), 3), dtype = int)*255
+    white_background = np.ones((int(height*1.3), int(width*1.3), 3), dtype = int)*[random.randint(0,255),random.randint(0,255),random.randint(0,255)]
 
     return white_background
 
@@ -176,16 +195,27 @@ def rotate_bound(image, angle):
 
 def random_flip_rotate(image):
     '''
-    Flip image horizonally with probability of 0.5 & rotate image randomly
+    Flip image horizonally with probability of 0.5 & rotate image randomly with probability of 0.1
     Return:
-        image: horizonal flip
+        image: horizonal flip or rotate
     '''
     if random.random() < 0.5:
         image = cv2.flip(image, 1)
     
-    if random.random() < 0.5:
+    if random.random() < 0.1:
         angle = random.randrange(0,360,15)
         image = rotate_bound(image, angle)
+
+    return image
+
+def random_flip(image):
+    '''
+    Flip image horizonally with probability of 0.5
+    Return:
+        image: horizonal flip or rotate
+    '''
+    if random.random() < 0.5:
+        image = cv2.flip(image, 1)
 
     return image
 
@@ -203,46 +233,51 @@ def generate_img_name_list(folder_path):
             f.write(img_name + '\n')
         f.close()
 
-def main():
+def generate():
 
-    foreground_dir = os.path.join(os.getcwd(), 'train_imagev2_foreground' + os.sep)
-    background_dir = os.path.join(os.getcwd(), 'train_imagev2_background' + os.sep)
-    save_image_dir = os.path.join(os.getcwd(), 'train_data', 'train_image' + os.sep)
-    save_mask_dir = os.path.join(os.getcwd(), 'train_data', 'train_mask' + os.sep)
+    foreground_dir = os.path.join(os.getcwd(),'train_data', 'mydata', 'train_imagev2_foreground' + os.sep)
+    background_dir = os.path.join(os.getcwd(), 'train_data', 'mydata', 'train_imagev2_background' + os.sep)
+    save_image_dir = os.path.join(os.getcwd(), 'train_data', 'mydata', 'train_image' + os.sep)
+    save_mask_dir = os.path.join(os.getcwd(), 'train_data', 'mydata', 'train_mask' + os.sep)
     
     refresh_folder(save_image_dir); refresh_folder(save_mask_dir)
 
     foreground_list = glob.glob(foreground_dir + '*')
     background_list = glob.glob(background_dir + '*')
     
-    for i_image in tqdm(range(len(foreground_list)), desc = 'Processing:', unit = 'img'):
-        i_path = foreground_list[i_image]
+    n = (len(background_list)//len(foreground_list))*len(foreground_list)
+    idx_backgorund = np.random.choice(len(background_list), n, replace=False)
+
+    for i_image in tqdm(range(n), desc = 'Processing:', unit = 'img'):
+        i_path = foreground_list[i_image%len(foreground_list)]
         foreground, flag = load_foreground(i_path)
         if flag == False:
+            continue        
+        background, flag = load_background(background_list[idx_backgorund[i_image]])
+        if flag == False:
             continue
-        foreground_name = foreground_list[i_image].split(os.sep)[-1].split('.')[0]
+        image_name = background_list[idx_backgorund[i_image]].split(os.sep)[-1].split('.')[0]
+
+        foreground = random_flip_rotate(foreground)
+        background = random_flip(background)
+        composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
         
-        for i in range(3):
-            background, flag = load_background(background_list[random.randint(0,len(background_list)-1)])
-            if flag == False:
-                continue
-            composite_image, composite_mask = composite_foreground2background(foreground, background,size_thresh=0.8)
-            
-            cv2.imwrite(os.path.join(save_image_dir, foreground_name + str(i) + '.jpg'), composite_image)
-            cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
-            # print('save ', foreground_name+str(i), ' to folder' ' %d th foreground'%(i_image+1))
+        cv2.imwrite(os.path.join(save_image_dir, image_name + '.jpg'), composite_image)
+        cv2.imwrite(os.path.join(save_mask_dir, image_name + '.png'), composite_mask)
+        # print('save ', foreground_name+str(i), ' to folder' ' %d th foreground'%(i_image+1))
     
-    print('Complete Generating Dateset \n','!!!Enjoy Coding!!!')
+    # print('Complete Generating Dateset \n','!!!Enjoy Coding!!!')
 
 if __name__ == '__main__':
-
-    foreground, flag = load_foreground('1.png')
-    # background, flag = load_background('train_data/DUTS/DUTS-TR/HRSOD_train/00000.jpg')
-    foreground = random_flip_rotate(foreground)
-    background = generate_white_background(foreground)
-    # background = random_flip(background)
-    composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
-    cv2.imwrite(os.path.join('matte.jpg'), composite_image)
+    generate()
+    # foreground, flag = load_foreground('1.png')
+    # # background, flag = load_background('train_data/DUTS/DUTS-TR/HRSOD_train/00000.jpg')
+    # foreground = random_flip_rotate(foreground)
+    # background = generate_onecolor_background(foreground)
+    # print(background)
+    # # background = random_flip(background)
+    # composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
+    # cv2.imwrite(os.path.join('matte.jpg'), composite_image)
     # cv2.imwrite(os.path.join(save_mask_dir, foreground_name + str(i) + '.png'), composite_mask)
     # print('Complete Generating Dateset \n','!!Enjoy Coding!!')
     # foreground_dir = os.path.join(os.getcwd(), 'test_data', 'test_images' + os.sep)
