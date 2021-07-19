@@ -133,17 +133,16 @@ def load_background(file_path):
         background: 3 channel background, dtype = uint8
         flag: flag for whether this background will be use in later process
     '''
-    background = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
+    background = cv2.imread(file_path)
     try:
         if background.shape[2] == 3:
-            background = background
             flag = True
         else:
             print(file_path.split(os.sep)[-1], ' Invalid background. Will skip the composition of this background.')
             background = None
             flag = False
     except:
-        print(file_path.split(os.sep)[-1], ' Invalid foreground. Will skip the composition of this background.')
+        print(file_path.split(os.sep)[-1], ' Invalid background. Will skip the composition of this background.')
         background = None
         flag = False
 
@@ -262,6 +261,10 @@ def generate():
         background = random_flip(background)
         composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
         
+        # resize image to a smaller size in order to reduce training time comment in later use
+        cv2.resize(composite_image, (320,320), cv2.INTER_AREA)
+        cv2.resize(composite_mask, (320,320), cv2.INTER_AREA)
+
         cv2.imwrite(os.path.join(save_image_dir, image_name + '.jpg'), composite_image)
         cv2.imwrite(os.path.join(save_mask_dir, image_name + '.png'), composite_mask)
         # print('save ', foreground_name+str(i), ' to folder' ' %d th foreground'%(i_image+1))
@@ -269,7 +272,25 @@ def generate():
     # print('Complete Generating Dateset \n','!!!Enjoy Coding!!!')
 
 if __name__ == '__main__':
-    generate()
+
+    foreground_dir = os.path.join(os.getcwd(), 'foreground' + os.sep)
+    background_dir = os.path.join(os.getcwd(), 'background' + os.sep)
+
+    foreground_list = glob.glob(foreground_dir + '*')
+    background_list = glob.glob(background_dir + '*')
+
+    for i in tqdm(range(len(foreground_list)), desc = 'foreground:', unit = 'img'):
+        foreground, flag = load_foreground(foreground_list[i])
+        if flag == False:
+            print(flag, foreground_list[i])
+    print('foreground check complete')
+    for i in tqdm(range(len(background_list)), desc = 'background:', unit = 'img'):
+        background, flag = load_background(background_list[i])
+        if flag == False:
+            print(flag, background_list[i])
+    # image = cv2.imread('background\\10712856283_8c3dac85e4_b.jpg')
+    # print(image.shape[2])
+    # generate()
     # foreground, flag = load_foreground('1.png')
     # # background, flag = load_background('train_data/DUTS/DUTS-TR/HRSOD_train/00000.jpg')
     # foreground = random_flip_rotate(foreground)
