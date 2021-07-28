@@ -16,7 +16,7 @@ def composite_foreground2background(foreground, background, foreground_scale=0.7
     Param: 
         foreground: foreground 4 channel image (RGBA) 
         background: background 3 channel image
-        foreground_scale: scale of the shorter side of background image, which foreground size should smaller than it
+        foreground_scale: scale of the shorter side of background image, which foreground size should smaller than shorter side * scale
     Return: 
         composite_image: 3 channel image with foreground, dtype = np.uint8
         composite_mask: 1 channel mask, dtype = np.uint8
@@ -261,9 +261,9 @@ def generate():
         background = random_flip(background)
         composite_image, composite_mask = composite_foreground2background(foreground, background,foreground_scale=0.8)
         
-        # resize image to a smaller size in order to reduce training time comment in later use
-        cv2.resize(composite_image, (320,320), cv2.INTER_AREA)
-        cv2.resize(composite_mask, (320,320), cv2.INTER_AREA)
+        # resize image to a smaller size in order to reduce storage.Comment in later use
+        # composite_image = cv2.resize(composite_image, (320,320), interpolation = cv2.INTER_AREA)
+        # composite_mask = cv2.resize(composite_mask, (320,320), interpolation = cv2.INTER_AREA)
 
         cv2.imwrite(os.path.join(save_image_dir, image_name + '.jpg'), composite_image)
         cv2.imwrite(os.path.join(save_mask_dir, image_name + '.png'), composite_mask)
